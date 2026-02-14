@@ -13,10 +13,7 @@ use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plug
 
 use flicker::Renderer;
 
-use portlight::{
-    App, AppMode, AppOptions, Bitmap, Cursor, MouseButton, Point, RawWindow, Response, Window,
-    WindowContext, WindowOptions,
-};
+use portlight::{Bitmap, Cursor, EventLoop, EventLoopMode, EventLoopOptions, MouseButton, Point, RawWindow, Response, Window, WindowContext, WindowOptions};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -293,7 +290,7 @@ impl ViewState {
 
 pub struct GainView {
     #[allow(unused)]
-    app: App,
+    app: EventLoop,
     window: Window,
     params: Rc<RefCell<GainParams>>,
 }
@@ -304,7 +301,7 @@ impl GainView {
         parent: &ParentWindow,
         params: &GainParams,
     ) -> portlight::Result<GainView> {
-        let app = AppOptions::new().mode(AppMode::Guest).build()?;
+        let app = EventLoopOptions::new().mode(EventLoopMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
         options.size(portlight::Size::new(256.0, 256.0));
