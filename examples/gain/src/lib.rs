@@ -13,7 +13,7 @@ use coupler::{buffers::*, bus::*, engine::*, events::*, host::*, params::*, plug
 
 use flicker::Renderer;
 
-use portlight::{Bitmap, Context, Event, Key, Cursor, EventLoop, EventLoopMode, EventLoopOptions, MouseButton, Point, RawWindow, Response, Window, WindowOptions};
+use portlight::{Bitmap, Context, Event, Key, Cursor, EventLoop, EventLoopMode, EventLoopOptions, MouseButton, Point, RawWindow, Response, Window, WindowOptions, Task};
 
 #[derive(Params, Serialize, Deserialize, Clone)]
 struct GainParams {
@@ -169,6 +169,7 @@ struct Gesture {
 
 struct ViewState {
     host: ViewHost,
+    window: Option<Window>,
     params: Rc<RefCell<GainParams>>,
     renderer: Renderer,
     framebuffer: Vec<u32>,
@@ -185,7 +186,13 @@ impl ViewState {
             framebuffer: Vec::new(),
             mouse_pos: Point { x: -1.0, y: -1.0 },
             gesture: None,
+            window: None,
         }
+    }
+
+    // todo: not sure this is a good pattern or name to use
+    fn window(&self) -> &Window {
+        self.window.as_ref().unwrap()
     }
 
     fn update_cursor(&self, window: &Window) {
@@ -196,95 +203,105 @@ impl ViewState {
             window.set_cursor(Cursor::Arrow);
         }
     }
+}
 
-    fn handle_event(&mut self, cx: &Context, key:  Key, event: Event) -> Response {
-        use flicker::{Affine, Color, Path, Point};
-        use portlight::WindowEvent;
+impl Task for ViewState {
+    fn event(&mut self, cx: &Context, key: Key, event: Event) -> Response {
+        {
+            use flicker::{Affine, Color, Path, Point};
+            use portlight::WindowEvent;
 
-        match event {
-            Event::Window(WindowEvent::Frame) => {
-                let scale = cx.window().scale();
-                let size = cx.window().size();
-                let width = (size.width * scale) as usize;
-                let height = (size.height * scale) as usize;
-                self.framebuffer.resize(width * height, 0xFF000000);
+            match event {
+                Event::Window(WindowEvent::Frame) => {
+                    // todo: is this actually better than just duplicating self.window.as_ref...
+                    let (width, height, scale) = {
+                        let window = self.window();
+                        //let window = self.window.as_ref().unwrap();
+                        let scale = window.scale();
+                        let size = window.size();
+                        let width = (size.width * scale) as usize;
+                        let height = (size.height * scale) as usize;
+                        (width, height, scale)
+                    };
+                    self.framebuffer.resize(width * height, 0xFF000000);
 
-                let mut target = self.renderer.attach(&mut self.framebuffer, width, height);
+                    let mut target = self.renderer.attach(&mut self.framebuffer, width, height);
 
-                target.clear(Color::rgba(21, 26, 31, 255));
+                    target.clear(Color::rgba(21, 26, 31, 255));
 
-                let transform = Affine::scale(scale as f32);
+                    let transform = Affine::scale(scale as f32);
 
-                let value = self.params.borrow().gain;
+                    let value = self.params.borrow().gain;
 
-                let center = Point::new(128.0, 128.0);
-                let radius = 32.0;
-                let angle1 = 0.75 * std::f32::consts::PI;
-                let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
-                let mut path = Path::new();
-                path.move_to(center + radius * Point::new(angle1.cos(), angle1.sin()));
-                path.arc(radius, angle1, angle2);
-                path.line_to(center + (radius - 4.0) * Point::new(angle2.cos(), angle2.sin()));
-                path.arc(radius - 4.0, angle2, angle1);
-                path.close();
-                target.fill_path(&path, transform, Color::rgba(240, 240, 245, 255));
+                    let center = Point::new(128.0, 128.0);
+                    let radius = 32.0;
+                    let angle1 = 0.75 * std::f32::consts::PI;
+                    let angle2 = angle1 + value * 1.5 * std::f32::consts::PI;
+                    let mut path = Path::new();
+                    path.move_to(center + radius * Point::new(angle1.cos(), angle1.sin()));
+                    path.arc(radius, angle1, angle2);
+                    path.line_to(center + (radius - 4.0) * Point::new(angle2.cos(), angle2.sin()));
+                    path.arc(radius - 4.0, angle2, angle1);
+                    path.close();
+                    target.fill_path(&path, transform, Color::rgba(240, 240, 245, 255));
 
-                let center = Point::new(128.0, 128.0);
-                let radius = 32.0;
-                let angle = 0.75 * std::f32::consts::PI;
-                let span = 1.5 * std::f32::consts::PI;
-                let mut path = Path::new();
-                path.move_to(center + radius * Point::new(angle.cos(), angle.sin()));
-                path.arc(radius, angle, angle + span);
-                path.line_to(center + (radius - 4.0) * Point::new(-angle.cos(), angle.sin()));
-                path.arc(radius - 4.0, angle + span, angle);
-                path.close();
-                target.stroke_path(&path, 1.0, transform, Color::rgba(240, 240, 245, 255));
+                    let center = Point::new(128.0, 128.0);
+                    let radius = 32.0;
+                    let angle = 0.75 * std::f32::consts::PI;
+                    let span = 1.5 * std::f32::consts::PI;
+                    let mut path = Path::new();
+                    path.move_to(center + radius * Point::new(angle.cos(), angle.sin()));
+                    path.arc(radius, angle, angle + span);
+                    path.line_to(center + (radius - 4.0) * Point::new(-angle.cos(), angle.sin()));
+                    path.arc(radius - 4.0, angle + span, angle);
+                    path.close();
+                    target.stroke_path(&path, 1.0, transform, Color::rgba(240, 240, 245, 255));
 
-                cx.window().present(Bitmap::new(&self.framebuffer, width, height));
-            }
-            Event::Window(WindowEvent::MouseMove(pos)) => {
-                self.mouse_pos = pos;
-                if let Some(gesture) = &self.gesture {
-                    let delta = -0.005 * (pos.y - gesture.start_mouse_pos.y) as f32;
-                    let new_value = (gesture.start_value + delta).clamp(0.0, 1.0);
-                    self.host.set_param(0, new_value as f64);
-                    self.params.borrow_mut().gain = new_value;
-                } else {
-                    self.update_cursor(cx.window());
+                    self.window().present(Bitmap::new(&self.framebuffer, width, height));
                 }
-            }
-            Event::Window(WindowEvent::MouseDown(button)) => {
-                if button == MouseButton::Left {
-                    let pos = self.mouse_pos;
-                    if pos.x >= 96.0 && pos.x < 160.0 && pos.y >= 96.0 && pos.y < 160.0 {
-                        cx.window().set_cursor(Cursor::SizeNs);
-                        self.host.begin_gesture(0);
-                        let value = self.params.borrow().gain;
-                        self.host.set_param(0, value as f64);
-                        self.params.borrow_mut().gain = value;
-                        self.gesture = Some(Gesture {
-                            start_mouse_pos: pos,
-                            start_value: value,
-                        });
-                        return Response::Capture;
+                Event::Window(WindowEvent::MouseMove(pos)) => {
+                    self.mouse_pos = pos;
+                    if let Some(gesture) = &self.gesture {
+                        let delta = -0.005 * (pos.y - gesture.start_mouse_pos.y) as f32;
+                        let new_value = (gesture.start_value + delta).clamp(0.0, 1.0);
+                        self.host.set_param(0, new_value as f64);
+                        self.params.borrow_mut().gain = new_value;
+                    } else {
+                        self.update_cursor(self.window());
                     }
                 }
-            }
-            Event::Window(WindowEvent::MouseUp(button)) => {
-                if button == MouseButton::Left {
-                    if self.gesture.is_some() {
-                        self.host.end_gesture(0);
-                        self.gesture = None;
-                        self.update_cursor(cx.window());
-                        return Response::Capture;
+                Event::Window(WindowEvent::MouseDown(button)) => {
+                    if button == MouseButton::Left {
+                        let pos = self.mouse_pos;
+                        if pos.x >= 96.0 && pos.x < 160.0 && pos.y >= 96.0 && pos.y < 160.0 {
+                            self.window().set_cursor(Cursor::SizeNs);
+                            self.host.begin_gesture(0);
+                            let value = self.params.borrow().gain;
+                            self.host.set_param(0, value as f64);
+                            self.params.borrow_mut().gain = value;
+                            self.gesture = Some(Gesture {
+                                start_mouse_pos: pos,
+                                start_value: value,
+                            });
+                            return Response::Capture;
+                        }
                     }
                 }
+                Event::Window(WindowEvent::MouseUp(button)) => {
+                    if button == MouseButton::Left {
+                        if self.gesture.is_some() {
+                            self.host.end_gesture(0);
+                            self.gesture = None;
+                            self.update_cursor(self.window());
+                            return Response::Capture;
+                        }
+                    }
+                }
+                _ => {}
             }
-            _ => {}
+
+            Response::Ignore
         }
-
-        Response::Ignore
     }
 }
 
@@ -301,10 +318,25 @@ impl GainView {
         parent: &ParentWindow,
         params: &GainParams,
     ) -> portlight::Result<GainView> {
+
+        let event_loop = EventLoop::new().unwrap();
+
+        let params = Rc::new(RefCell::new(params.clone()));
+        let state = event_loop.spawn(ViewState::new(host, Rc::clone(&params)));
+
         let app = EventLoopOptions::new().mode(EventLoopMode::Guest).build()?;
 
         let mut options = WindowOptions::new();
         options.size(portlight::Size::new(256.0, 256.0));
+
+        let window = WindowOptions::new()
+            .title("window")
+            .size(portlight::Size::new(512.0, 512.0))
+            .open(cx, Key(0))
+            .unwrap();
+
+        window.show();
+        state.window = Some(window);
 
         let raw_parent = match parent.as_raw() {
             RawParent::Win32(window) => RawWindow::Win32(window),
@@ -313,8 +345,7 @@ impl GainView {
         };
         unsafe { options.raw_parent(raw_parent) };
 
-        let params = Rc::new(RefCell::new(params.clone()));
-        let mut state = ViewState::new(host, Rc::clone(&params));
+
         let window = options.open(app.handle(), move |cx, event| state.handle_event(cx, event))?;
 
         window.show();
