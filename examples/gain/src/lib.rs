@@ -216,7 +216,6 @@ impl Task for ViewState {
                     // todo: is this actually better than just duplicating self.window.as_ref...
                     let (width, height, scale) = {
                         let window = self.window();
-                        //let window = self.window.as_ref().unwrap();
                         let scale = window.scale();
                         let size = window.size();
                         let width = (size.width * scale) as usize;
