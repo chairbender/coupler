@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 coupler = { workspace = true, features = ["derive"] }
-portlight = { git = "https://github.com/coupler-rs/portlight", rev = "1ae8c3d0b4a9c31ef030d7deb2ecd60d6c13460e" }
+portlight = { git = "https://github.com/coupler-rs/portlight", rev = "826432c9f986d7962f383ca78838d59e9ba33a38" }
 flicker = { git = "https://github.com/coupler-rs/flicker", rev = "80aca05cb6c7406f8c2a4ba66d85849dc344afaa" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

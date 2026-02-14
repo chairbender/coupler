@@ -197,12 +197,12 @@ impl ViewState {
         }
     }
 
-    fn handle_event(&mut self, cx: &WindowContext, event: portlight::Event) -> Response {
+    fn handle_event(&mut self, cx: &WindowContext, event: portlight::WindowEvent) -> Response {
         use flicker::{Affine, Color, Path, Point};
-        use portlight::Event;
+        use portlight::WindowEvent;
 
         match event {
-            Event::Frame => {
+            WindowEvent::Frame => {
                 let scale = cx.window().scale();
                 let size = cx.window().size();
                 let width = (size.width * scale) as usize;
@@ -243,7 +243,7 @@ impl ViewState {
 
                 cx.window().present(Bitmap::new(&self.framebuffer, width, height));
             }
-            Event::MouseMove(pos) => {
+            WindowEvent::MouseMove(pos) => {
                 self.mouse_pos = pos;
                 if let Some(gesture) = &self.gesture {
                     let delta = -0.005 * (pos.y - gesture.start_mouse_pos.y) as f32;
@@ -254,7 +254,7 @@ impl ViewState {
                     self.update_cursor(cx.window());
                 }
             }
-            Event::MouseDown(button) => {
+            WindowEvent::MouseDown(button) => {
                 if button == MouseButton::Left {
                     let pos = self.mouse_pos;
                     if pos.x >= 96.0 && pos.x < 160.0 && pos.y >= 96.0 && pos.y < 160.0 {
@@ -271,7 +271,7 @@ impl ViewState {
                     }
                 }
             }
-            Event::MouseUp(button) => {
+            WindowEvent::MouseUp(button) => {
                 if button == MouseButton::Left {
                     if self.gesture.is_some() {
                         self.host.end_gesture(0);
