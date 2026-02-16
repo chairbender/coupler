@@ -5,18 +5,20 @@ use std::sync::Arc;
 
 use clap_sys::ext::{gui::*, params::*};
 use clap_sys::{host::*, plugin::*};
-use clap_sys::id::CLAP_INVALID_ID;
+use clap_sys::id::{clap_id, CLAP_INVALID_ID};
 use super::instance::Instance;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
 
-struct ClapViewHost {
+pub struct ClapViewHost {
     host: *const clap_host,
     host_params: Option<*const clap_host_params>,
     param_map: Arc<HashMap<ParamId, usize>>,
     param_gestures: Arc<ParamGestures>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
+    timer_id: Option<clap_id>,
 }
 
 impl ViewHostInner for ClapViewHost {
@@ -189,12 +191,16 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let host = ViewHost::from_inner(Rc::new(ClapViewHost {
+        let clap_view_host = Rc::new(ClapViewHost {
             host: instance.host,
             host_params: main_thread_state.host_params,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
-        }));
+            #[cfg_attr(not(target_os = "linux"), allow(unused))]
+            timer_id: None,
+        });
+        main_thread_state.view_host = Some(clap_view_host);
+        let host = ViewHost::from_inner(clap_view_host);
         let parent = ParentWindow::from_raw(raw_parent);
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
@@ -220,8 +226,8 @@ impl<P: Plugin> Instance<P> {
             ) {
                 return false;
             }
-            instance.main_thread_state.get().plugin
-            editor_state.timer_id = Some(timer_id);
+            let main_thread_state = &mut *instance.main_thread_state.get();
+            main_thread_state.view_host.unwrap().timer_id = Some(timer_id);
 
             if let Some(fd) = editor.file_descriptor() {
                 if !(*posix_fd_support).register_fd.unwrap_unchecked()(

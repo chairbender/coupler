@@ -5,7 +5,7 @@ use std::iter::zip;
 use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{io, mem, ptr, slice};
-
+use std::rc::Rc;
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support, state::*};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
 use clap_sys::ext::posix_fd_support::{clap_host_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT};
@@ -15,6 +15,7 @@ use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
 use crate::engine::{Config, Engine};
 use crate::events::{Data, Event, Events};
+use crate::format::clap::gui::ClapViewHost;
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
 use crate::plugin::{Plugin, PluginInfo};
@@ -51,6 +52,7 @@ pub struct MainThreadState<P: Plugin> {
     pub layout_index: usize,
     pub plugin: P,
     pub view: Option<P::View>,
+    pub view_host: Option<Rc<ClapViewHost>>,
 }
 
 pub struct ProcessState<P: Plugin> {
@@ -145,6 +147,7 @@ impl<P: Plugin> Instance<P> {
                 layout_index: 0,
                 plugin: P::new(Host::from_inner(Arc::new(ClapHost {}))),
                 view: None,
+                view_host: None,
             }),
             process_state: UnsafeCell::new(ProcessState {
                 gesture_states: GestureStates::with_count(info.params.len()),
