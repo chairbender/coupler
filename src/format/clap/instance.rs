@@ -6,9 +6,10 @@ use std::ptr::NonNull;
 use std::sync::Arc;
 use std::{io, mem, ptr, slice};
 
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, state::*};
+use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support, state::*};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
-
+use clap_sys::ext::posix_fd_support::{clap_host_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT};
+use clap_sys::ext::timer_support::{clap_host_timer_support, CLAP_EXT_TIMER_SUPPORT};
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
@@ -60,11 +61,19 @@ pub struct ProcessState<P: Plugin> {
     engine: Option<P::Engine>,
 }
 
+struct HostExtensions {
+    pub timer_support: Option<*const clap_host_timer_support>,
+    pub posix_fd_support: Option<*const clap_host_posix_fd_support>,
+}
+
 #[repr(C)]
 pub struct Instance<P: Plugin> {
     #[allow(unused)]
     pub clap_plugin: clap_plugin,
     pub host: *const clap_host,
+    // todo: is below comment still correct?
+    // Safety: We only form an &mut in init(), which must be called before any other methods
+    pub host_extensions: UnsafeCell<HostExtensions>,
     pub info: Arc<PluginInfo>,
     pub input_bus_map: Vec<usize>,
     pub output_bus_map: Vec<usize>,
@@ -120,6 +129,10 @@ impl<P: Plugin> Instance<P> {
                 on_main_thread: Some(Self::on_main_thread),
             },
             host,
+            host_extensions: UnsafeCell::new(HostExtensions {
+                timer_support: None,
+                posix_fd_support: None,
+            }),
             info: info.clone(),
             input_bus_map,
             output_bus_map,
@@ -310,6 +323,25 @@ impl<P: Plugin> Instance<P> {
             (*instance.host).get_extension.unwrap()(instance.host, CLAP_EXT_PARAMS.as_ptr());
         if !host_params.is_null() {
             main_thread_state.host_params = Some(host_params as *const clap_host_params);
+        }
+        let host_extensions = instance.host_extensions.get();
+
+        let timer_support = (*instance.host).get_extension.unwrap_unchecked()(
+            instance.host,
+            CLAP_EXT_TIMER_SUPPORT.as_ptr(),
+        );
+        if !timer_support.is_null() {
+            // todo: dereferencing seems odd - is this okay?
+            (*host_extensions).timer_support = Some(timer_support as *const clap_host_timer_support);
+        }
+
+        let posix_fd_support = (*instance.host).get_extension.unwrap_unchecked()(
+            instance.host,
+            CLAP_EXT_POSIX_FD_SUPPORT.as_ptr(),
+        );
+        if !posix_fd_support.is_null() {
+            // todo: dereferencing seems odd - is this okay?
+            (*host_extensions).posix_fd_support = Some(posix_fd_support as *const clap_host_posix_fd_support);
         }
 
         true

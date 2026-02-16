@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use clap_sys::ext::{gui::*, params::*};
 use clap_sys::{host::*, plugin::*};
-
+use clap_sys::id::CLAP_INVALID_ID;
 use super::instance::Instance;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
@@ -198,6 +198,42 @@ impl<P: Plugin> Instance<P> {
         let parent = ParentWindow::from_raw(raw_parent);
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
+
+        // register callback
+        #[cfg(target_os = "linux")]
+        {
+            let host_extensions = *instance.host_extensions.get();
+
+            if host_extensions.timer_support.is_none() || host_extensions.posix_fd_support.is_none()
+            {
+                return false;
+            }
+            let timer_support = host_extensions.timer_support.unwrap();
+            let posix_fd_support = host_extensions.posix_fd_support.unwrap();
+
+            const TIMER_PERIOD_MS: u32 = 16;
+            let mut timer_id = CLAP_INVALID_ID;
+            if !(*timer_support).register_timer.unwrap_unchecked()(
+                instance.host,
+                TIMER_PERIOD_MS,
+                &mut timer_id,
+            ) {
+                return false;
+            }
+            instance.main_thread_state.get().plugin
+            editor_state.timer_id = Some(timer_id);
+
+            if let Some(fd) = editor.file_descriptor() {
+                if !(*posix_fd_support).register_fd.unwrap_unchecked()(
+                    wrapper.clap_host,
+                    fd,
+                    CLAP_POSIX_FD_READ,
+                ) {
+                    return false;
+                }
+                editor_state.fd = Some(fd);
+            }
+        }
 
         true
     }
