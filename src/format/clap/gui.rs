@@ -119,6 +119,12 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
+        if let Some(posix_fd_support) = host_extensions.posix_fd_support {
+            if let Some(fd) = editor_state.fd.take() {
+                (*posix_fd_support).unregister_fd.unwrap_unchecked()(wrapper.clap_host, fd);
+            }
+        }
+
         main_thread_state.view = None;
     }
 
@@ -209,6 +215,9 @@ impl<P: Plugin> Instance<P> {
         };
 
         // register callback
+        // TODO: chicken and egg problem here.
+        //  We need view to be created to get its fd to register it. But to create view,
+        //  we need to have already registered the fd / timer.
         #[cfg(target_os = "linux")]
         {
             // todo: is there a way to avoid the repetitive de-referencing?
@@ -220,6 +229,7 @@ impl<P: Plugin> Instance<P> {
             let timer_support = (*host_extensions).timer_support.unwrap();
             let posix_fd_support = (*host_extensions).posix_fd_support.unwrap();
 
+            // todo: what's even the point of saving the timer_id / fd? do we really need to?
             const TIMER_PERIOD_MS: u32 = 16;
             let mut timer_id = CLAP_INVALID_ID;
             if !(*timer_support).register_timer.unwrap_unchecked()(
@@ -227,7 +237,7 @@ impl<P: Plugin> Instance<P> {
                 TIMER_PERIOD_MS,
                 &mut timer_id,
             ) {
-                return false;
+                dbg!("Failed to register timer");
             }
             clap_view_host.timer_id = Some(timer_id);
 
@@ -237,7 +247,7 @@ impl<P: Plugin> Instance<P> {
                     fd,
                     CLAP_POSIX_FD_READ,
                 ) {
-                    return false;
+                    dbg!("Failed to register fd");
                 }
                 clap_view_host.fd = Some(fd);
             }
@@ -249,7 +259,11 @@ impl<P: Plugin> Instance<P> {
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
 
-        
+        if let Some(posix_fd_support) = host_extensions.posix_fd_support {
+            if let Some(fd) = editor_state.fd.take() {
+                (*posix_fd_support).unregister_fd.unwrap_unchecked()(wrapper.clap_host, fd);
+            }
+        }
 
         true
     }
@@ -269,5 +283,37 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn gui_hide(_plugin: *const clap_plugin) -> bool {
         false
+    }
+
+    #[cfg(target_os = "linux")]
+    unsafe extern "C" fn timer_support_on_timer(plugin: *const clap_plugin, timer_id: clap_id) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        if let Some(id) = editor_state.timer_id {
+            if let Some(editor) = &mut editor_state.editor {
+                if timer_id == id {
+                    editor.poll();
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub unsafe extern "C" fn posix_fd_support_on_fd(
+        plugin: *const clap_plugin,
+        fd: i32,
+        _flags: clap_posix_fd_flags,
+    ) {
+        let wrapper = &*(plugin as *mut Wrapper<P>);
+        let editor_state = &mut *wrapper.editor_state.get();
+
+        if let Some(editor_fd) = editor_state.fd {
+            if let Some(editor) = &mut editor_state.editor {
+                if fd == editor_fd {
+                    editor.poll();
+                }
+            }
+        }
     }
 }
