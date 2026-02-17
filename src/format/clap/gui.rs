@@ -83,12 +83,12 @@ impl<P: Plugin> Instance<P> {
     const API: &'static CStr = CLAP_WINDOW_API_X11;
 
     #[cfg(target_os = "linux")]
-    const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
+    pub(crate) const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
         on_timer: Some(Self::timer_support_on_timer),
     };
 
     #[cfg(target_os = "linux")]
-    const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support = clap_plugin_posix_fd_support {
+    pub(crate) const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support = clap_plugin_posix_fd_support {
         on_fd: Some(Self::posix_fd_support_on_fd),
     };
 

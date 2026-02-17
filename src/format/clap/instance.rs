@@ -560,6 +560,8 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
+        // todo: adding this required making below constants public - is there
+        //  a better way?
         #[cfg(target_os = "linux")]
         if id == CLAP_EXT_TIMER_SUPPORT {
             return &Self::TIMER_SUPPORT as *const _ as *const c_void;
@@ -567,11 +569,10 @@ impl<P: Plugin> Instance<P> {
 
         #[cfg(target_os = "linux")]
         if id == CLAP_EXT_POSIX_FD_SUPPORT {
-            return &Self::POSIX_FD_SUPPORT as *const _
-                as *const c_void;
+            return &Self::POSIX_FD_SUPPORT as *const _ as *const c_void;
+        }
 
-
-            ptr::null()
+        ptr::null()
     }
 
     unsafe extern "C" fn on_main_thread(plugin: *const clap_plugin) {
