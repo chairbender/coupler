@@ -63,7 +63,7 @@ pub struct ProcessState<P: Plugin> {
     engine: Option<P::Engine>,
 }
 
-struct HostExtensions {
+pub struct HostExtensions {
     pub timer_support: Option<*const clap_host_timer_support>,
     pub posix_fd_support: Option<*const clap_host_posix_fd_support>,
 }

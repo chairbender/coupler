@@ -193,32 +193,32 @@ impl<P: Plugin> Instance<P> {
         let raw_parent = { RawParent::X11(window.specific.x11) };
 
         let instance = &*(plugin as *const Self);
-        let host_extensions = &mut *instance.host_extensions.get();
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let clap_view_host = Rc::new(ClapViewHost {
+        // todo: doing it this way so we can procedurally modify clapviewhost for the linux case.
+        // Is there a cleaner way that avoids procedural modification.
+        let mut clap_view_host = ClapViewHost {
             host: instance.host,
             host_params: main_thread_state.host_params,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
             #[cfg_attr(not(target_os = "linux"), allow(unused))]
             timer_id: None,
+            #[cfg_attr(not(target_os = "linux"), allow(unused))]
             fd: None,
-        });
-        let host = ViewHost::from_inner(main_thread_state.view_host.as_ref().unwrap().clone());
-        let parent = ParentWindow::from_raw(raw_parent);
-        let view = main_thread_state.plugin.view(host, &parent);
-        main_thread_state.view = Some(view);
+        };
 
         // register callback
         #[cfg(target_os = "linux")]
         {
-            if host_extensions.timer_support.is_none() || host_extensions.posix_fd_support.is_none()
+            // todo: is there a way to avoid the repetitive de-referencing?
+            let host_extensions = instance.host_extensions.get();
+            if (*host_extensions).timer_support.is_none() || (*host_extensions).posix_fd_support.is_none()
             {
                 return false;
             }
-            let timer_support = host_extensions.timer_support.unwrap();
-            let posix_fd_support = host_extensions.posix_fd_support.unwrap();
+            let timer_support = (*host_extensions).timer_support.unwrap();
+            let posix_fd_support = (*host_extensions).posix_fd_support.unwrap();
 
             const TIMER_PERIOD_MS: u32 = 16;
             let mut timer_id = CLAP_INVALID_ID;
@@ -229,9 +229,9 @@ impl<P: Plugin> Instance<P> {
             ) {
                 return false;
             }
-            main_thread_state.view_host.unwrap().as_ref().timer_id = Some(timer_id);
+            clap_view_host.timer_id = Some(timer_id);
 
-            if let Some(fd) = main_thread_state.view.unwrap().file_descriptor() {
+            if let Some(fd) = main_thread_state.view.as_ref().unwrap().file_descriptor() {
                 if !(*posix_fd_support).register_fd.unwrap_unchecked()(
                     instance.host,
                     fd,
@@ -239,9 +239,17 @@ impl<P: Plugin> Instance<P> {
                 ) {
                     return false;
                 }
-                main_thread_state.view_host.unwrap().fd = Some(fd);
+                clap_view_host.fd = Some(fd);
             }
         }
+
+        clap_view_host.fd = None;
+        let host = ViewHost::from_inner(Rc::new(clap_view_host));
+        let parent = ParentWindow::from_raw(raw_parent);
+        let view = main_thread_state.plugin.view(host, &parent);
+        main_thread_state.view = Some(view);
+
+        
 
         true
     }
