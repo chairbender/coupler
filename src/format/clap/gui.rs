@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr};
+use std::os::raw::c_int;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use clap_sys::ext::{gui::*, params::*};
 use clap_sys::{host::*, plugin::*};
+use clap_sys::ext::posix_fd_support::CLAP_POSIX_FD_READ;
 use clap_sys::id::{clap_id, CLAP_INVALID_ID};
 use super::instance::Instance;
 use crate::params::{ParamId, ParamValue};
@@ -19,6 +21,8 @@ pub struct ClapViewHost {
     param_gestures: Arc<ParamGestures>,
     #[cfg_attr(not(target_os = "linux"), allow(unused))]
     timer_id: Option<clap_id>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
+    fd: Option<c_int>,
 }
 
 impl ViewHostInner for ClapViewHost {
@@ -189,6 +193,7 @@ impl<P: Plugin> Instance<P> {
         let raw_parent = { RawParent::X11(window.specific.x11) };
 
         let instance = &*(plugin as *const Self);
+        let host_extensions = &mut *instance.host_extensions.get();
         let main_thread_state = &mut *instance.main_thread_state.get();
 
         let clap_view_host = Rc::new(ClapViewHost {
@@ -198,9 +203,9 @@ impl<P: Plugin> Instance<P> {
             param_gestures: Arc::clone(&instance.param_gestures),
             #[cfg_attr(not(target_os = "linux"), allow(unused))]
             timer_id: None,
+            fd: None,
         });
-        main_thread_state.view_host = Some(clap_view_host);
-        let host = ViewHost::from_inner(clap_view_host);
+        let host = ViewHost::from_inner(main_thread_state.view_host.as_ref().unwrap().clone());
         let parent = ParentWindow::from_raw(raw_parent);
         let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
@@ -208,8 +213,6 @@ impl<P: Plugin> Instance<P> {
         // register callback
         #[cfg(target_os = "linux")]
         {
-            let host_extensions = *instance.host_extensions.get();
-
             if host_extensions.timer_support.is_none() || host_extensions.posix_fd_support.is_none()
             {
                 return false;
@@ -226,18 +229,17 @@ impl<P: Plugin> Instance<P> {
             ) {
                 return false;
             }
-            let main_thread_state = &mut *instance.main_thread_state.get();
-            main_thread_state.view_host.unwrap().timer_id = Some(timer_id);
+            main_thread_state.view_host.unwrap().as_ref().timer_id = Some(timer_id);
 
-            if let Some(fd) = editor.file_descriptor() {
+            if let Some(fd) = main_thread_state.view.unwrap().file_descriptor() {
                 if !(*posix_fd_support).register_fd.unwrap_unchecked()(
-                    wrapper.clap_host,
+                    instance.host,
                     fd,
                     CLAP_POSIX_FD_READ,
                 ) {
                     return false;
                 }
-                editor_state.fd = Some(fd);
+                main_thread_state.view_host.unwrap().fd = Some(fd);
             }
         }
 
