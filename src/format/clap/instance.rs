@@ -8,8 +8,8 @@ use std::{io, mem, ptr, slice};
 use std::rc::Rc;
 use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support, state::*};
 use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
-use clap_sys::ext::posix_fd_support::{clap_host_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT};
-use clap_sys::ext::timer_support::{clap_host_timer_support, CLAP_EXT_TIMER_SUPPORT};
+use clap_sys::ext::posix_fd_support::{clap_host_posix_fd_support, clap_plugin_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT};
+use clap_sys::ext::timer_support::{clap_host_timer_support, clap_plugin_timer_support, CLAP_EXT_TIMER_SUPPORT};
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
@@ -560,7 +560,18 @@ impl<P: Plugin> Instance<P> {
             }
         }
 
-        ptr::null()
+        #[cfg(target_os = "linux")]
+        if id == CLAP_EXT_TIMER_SUPPORT {
+            return &Self::TIMER_SUPPORT as *const _ as *const c_void;
+        }
+
+        #[cfg(target_os = "linux")]
+        if id == CLAP_EXT_POSIX_FD_SUPPORT {
+            return &Self::POSIX_FD_SUPPORT as *const _
+                as *const c_void;
+
+
+            ptr::null()
     }
 
     unsafe extern "C" fn on_main_thread(plugin: *const clap_plugin) {

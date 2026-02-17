@@ -1,12 +1,15 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr};
+use std::future::Future;
 use std::os::raw::c_int;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use clap_sys::ext::{gui::*, params::*};
 use clap_sys::{host::*, plugin::*};
-use clap_sys::ext::posix_fd_support::CLAP_POSIX_FD_READ;
+use clap_sys::ext::posix_fd_support::{clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ};
+use clap_sys::ext::timer_support::clap_plugin_timer_support;
 use clap_sys::id::{clap_id, CLAP_INVALID_ID};
 use super::instance::Instance;
 use crate::params::{ParamId, ParamValue};
@@ -79,6 +82,16 @@ impl<P: Plugin> Instance<P> {
     #[cfg(target_os = "linux")]
     const API: &'static CStr = CLAP_WINDOW_API_X11;
 
+    #[cfg(target_os = "linux")]
+    const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
+        on_timer: Some(Self::timer_support_on_timer),
+    };
+
+    #[cfg(target_os = "linux")]
+    const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support = clap_plugin_posix_fd_support {
+        on_fd: Some(Self::posix_fd_support_on_fd),
+    };
+
     unsafe extern "C" fn gui_is_api_supported(
         _plugin: *const clap_plugin,
         api: *const c_char,
@@ -119,9 +132,9 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        if let Some(posix_fd_support) = host_extensions.posix_fd_support {
-            if let Some(fd) = editor_state.fd.take() {
-                (*posix_fd_support).unregister_fd.unwrap_unchecked()(wrapper.clap_host, fd);
+        if let Some(posix_fd_support) = (*instance.host_extensions.get()).posix_fd_support {
+            if let Some(fd) = main_thread_state.view_host.as_ref().unwrap().fd {
+                (*posix_fd_support).unregister_fd.unwrap_unchecked()(instance.host, fd);
             }
         }
 
@@ -201,29 +214,41 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        // todo: doing it this way so we can procedurally modify clapviewhost for the linux case.
-        // Is there a cleaner way that avoids procedural modification.
-        let mut clap_view_host = ClapViewHost {
+        // todo: timer_id / fd CANNOT be populated until we get a .view back from the plugin.
+        //  because that's the only way we can get the needed file_descriptor.
+        // todo: maybe a better approach - a way to get a fd from the plugin without all that.
+        // todo: I think this would be MUCH easier if we could just get the fd from the plugin
+        //  without any other fanfare. It's just an Rc, nothing special.
+        // todo: let's make it easier for now just using RefCell as a start /
+        //  followign path of leasr resistance, then refactor after
+        // TODO: note as we need an fd, we can't set it until after we get the .view from the plugin.
+        //  Is there a way we could simply have an FD external to the plugin, in coupler itself?
+        main_thread_state.view_host = Some(Rc::new(ClapViewHost {
             host: instance.host,
             host_params: main_thread_state.host_params,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
+            // todo: cannot populate this until AFTER we get the plugin view
             #[cfg_attr(not(target_os = "linux"), allow(unused))]
             timer_id: None,
             #[cfg_attr(not(target_os = "linux"), allow(unused))]
             fd: None,
-        };
+        }));
+        let view_host = ViewHost::from_inner(main_thread_state.view_host.as_ref().unwrap().clone());
+        let parent = ParentWindow::from_raw(raw_parent);
+        let view = main_thread_state.plugin.view(view_host, &parent);
 
-        // register callback
-        // TODO: chicken and egg problem here.
-        //  We need view to be created to get its fd to register it. But to create view,
-        //  we need to have already registered the fd / timer.
+        // todo: seems absurdly stupid, could we implement clone for ClapViewHot
+        // set timer / timer_id
         #[cfg(target_os = "linux")]
         {
+            // todo: awkward way of doing this - can we wrap in a function and early-return?
+
             // todo: is there a way to avoid the repetitive de-referencing?
             let host_extensions = instance.host_extensions.get();
             if (*host_extensions).timer_support.is_none() || (*host_extensions).posix_fd_support.is_none()
             {
+                dbg!("missing timer support");
                 return false;
             }
             let timer_support = (*host_extensions).timer_support.unwrap();
@@ -238,32 +263,39 @@ impl<P: Plugin> Instance<P> {
                 &mut timer_id,
             ) {
                 dbg!("Failed to register timer");
+                return false;
             }
-            clap_view_host.timer_id = Some(timer_id);
 
-            if let Some(fd) = main_thread_state.view.as_ref().unwrap().file_descriptor() {
+            let final_fd = if let Some(fd) = view.file_descriptor() {
                 if !(*posix_fd_support).register_fd.unwrap_unchecked()(
                     instance.host,
                     fd,
                     CLAP_POSIX_FD_READ,
                 ) {
                     dbg!("Failed to register fd");
+                    return false;
                 }
-                clap_view_host.fd = Some(fd);
-            }
+                Some(fd)
+            } else {
+                None
+            };
+
+            // todo: sketchy - now this view_host doesn't exactly match the view_host that
+            //  was passed to the plugin's view function - the fd / timer_id will be different
+            // (well, populated rather than none)
+            main_thread_state.view_host = Some(Rc::new(ClapViewHost {
+                host: instance.host,
+                host_params: main_thread_state.host_params,
+                param_map: Arc::clone(&instance.param_map),
+                param_gestures: Arc::clone(&instance.param_gestures),
+                #[cfg_attr(not(target_os = "linux"), allow(unused))]
+                timer_id: Some(timer_id),
+                #[cfg_attr(not(target_os = "linux"), allow(unused))]
+                fd: final_fd
+            }));
         }
 
-        clap_view_host.fd = None;
-        let host = ViewHost::from_inner(Rc::new(clap_view_host));
-        let parent = ParentWindow::from_raw(raw_parent);
-        let view = main_thread_state.plugin.view(host, &parent);
         main_thread_state.view = Some(view);
-
-        if let Some(posix_fd_support) = host_extensions.posix_fd_support {
-            if let Some(fd) = editor_state.fd.take() {
-                (*posix_fd_support).unregister_fd.unwrap_unchecked()(wrapper.clap_host, fd);
-            }
-        }
 
         true
     }
@@ -287,13 +319,17 @@ impl<P: Plugin> Instance<P> {
 
     #[cfg(target_os = "linux")]
     unsafe extern "C" fn timer_support_on_timer(plugin: *const clap_plugin, timer_id: clap_id) {
-        let wrapper = &*(plugin as *mut Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
 
-        if let Some(id) = editor_state.timer_id {
-            if let Some(editor) = &mut editor_state.editor {
-                if timer_id == id {
-                    editor.poll();
+        main_thread_state.view_host.as_ref().unwrap().timer_id;
+
+        if let Some(view_host) = &mut main_thread_state.view_host {
+            if let Some(id) = view_host.timer_id {
+                if id == timer_id {
+                    if let Some(view) = &mut main_thread_state.view {
+                        view.poll();
+                    }
                 }
             }
         }
@@ -305,14 +341,14 @@ impl<P: Plugin> Instance<P> {
         fd: i32,
         _flags: clap_posix_fd_flags,
     ) {
-        let wrapper = &*(plugin as *mut Wrapper<P>);
-        let editor_state = &mut *wrapper.editor_state.get();
-
-        if let Some(editor_fd) = editor_state.fd {
-            if let Some(editor) = &mut editor_state.editor {
-                if fd == editor_fd {
-                    editor.poll();
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        if let Some(view) = &mut main_thread_state.view {
+            if let Some(fd) = view.file_descriptor() {
+                if fd == fd {
+                    view.poll();
                 }
+
             }
         }
     }
