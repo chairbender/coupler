@@ -6,16 +6,18 @@ use std::os::raw::c_int;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use clap_sys::ext::{gui::*, params::*};
-use clap_sys::{host::*, plugin::*};
-use clap_sys::ext::posix_fd_support::{clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ};
-use clap_sys::ext::timer_support::clap_plugin_timer_support;
-use clap_sys::id::{clap_id, CLAP_INVALID_ID};
 use super::instance::Instance;
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
+use clap_sys::ext::posix_fd_support::{
+    clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ,
+};
+use clap_sys::ext::timer_support::clap_plugin_timer_support;
+use clap_sys::ext::{gui::*, params::*};
+use clap_sys::id::{clap_id, CLAP_INVALID_ID};
+use clap_sys::{host::*, plugin::*};
 
 pub struct ClapViewHost {
     host: *const clap_host,
@@ -88,9 +90,10 @@ impl<P: Plugin> Instance<P> {
     };
 
     #[cfg(target_os = "linux")]
-    pub(crate) const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support = clap_plugin_posix_fd_support {
-        on_fd: Some(Self::posix_fd_support_on_fd),
-    };
+    pub(crate) const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support =
+        clap_plugin_posix_fd_support {
+            on_fd: Some(Self::posix_fd_support_on_fd),
+        };
 
     unsafe extern "C" fn gui_is_api_supported(
         _plugin: *const clap_plugin,
@@ -214,13 +217,6 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        // todo: timer_id / fd CANNOT be populated until we get a .view back from the plugin.
-        //  because that's the only way we can get the needed file_descriptor.
-        // todo: maybe a better approach - a way to get a fd from the plugin without all that.
-        // todo: I think this would be MUCH easier if we could just get the fd from the plugin
-        //  without any other fanfare. It's just an Rc, nothing special.
-        // todo: let's make it easier for now just using RefCell as a start /
-        //  followign path of leasr resistance, then refactor after
         // TODO: note as we need an fd, we can't set it until after we get the .view from the plugin.
         //  Is there a way we could simply have an FD external to the plugin, in coupler itself?
         main_thread_state.view_host = Some(Rc::new(ClapViewHost {
@@ -242,11 +238,10 @@ impl<P: Plugin> Instance<P> {
         // set timer / timer_id
         #[cfg(target_os = "linux")]
         {
-            // todo: awkward way of doing this - can we wrap in a function and early-return?
-
             // todo: is there a way to avoid the repetitive de-referencing?
             let host_extensions = instance.host_extensions.get();
-            if (*host_extensions).timer_support.is_none() || (*host_extensions).posix_fd_support.is_none()
+            if (*host_extensions).timer_support.is_none()
+                || (*host_extensions).posix_fd_support.is_none()
             {
                 dbg!("missing timer support");
                 return false;
@@ -282,7 +277,8 @@ impl<P: Plugin> Instance<P> {
 
             // todo: sketchy - now this view_host doesn't exactly match the view_host that
             //  was passed to the plugin's view function - the fd / timer_id will be different
-            // (well, populated rather than none)
+            // I tend to assumed that will be okay since the plugin shouldn't care about the fd /
+            // timer_id in the first place (but then why put it in the view_host at all?)
             main_thread_state.view_host = Some(Rc::new(ClapViewHost {
                 host: instance.host,
                 host_params: main_thread_state.host_params,
@@ -291,7 +287,7 @@ impl<P: Plugin> Instance<P> {
                 #[cfg_attr(not(target_os = "linux"), allow(unused))]
                 timer_id: Some(timer_id),
                 #[cfg_attr(not(target_os = "linux"), allow(unused))]
-                fd: final_fd
+                fd: final_fd,
             }));
         }
 
@@ -348,7 +344,6 @@ impl<P: Plugin> Instance<P> {
                 if fd == fd {
                     view.poll();
                 }
-
             }
         }
     }
