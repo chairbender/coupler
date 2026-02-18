@@ -11,6 +11,7 @@ use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
+use clap_sys::ext::note_ports::clap_plugin_note_ports;
 use clap_sys::ext::posix_fd_support::{
     clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ,
 };
@@ -94,6 +95,12 @@ impl<P: Plugin> Instance<P> {
         clap_plugin_posix_fd_support {
             on_fd: Some(Self::posix_fd_support_on_fd),
         };
+
+    // todo: right place?
+    pub(crate) const NOTE_PORTS: clap_plugin_note_ports = clap_plugin_note_ports {
+        count: Some(Self::note_ports_count),
+        get: Some(Self::note_ports_get),
+    };
 
     unsafe extern "C" fn gui_is_api_supported(
         _plugin: *const clap_plugin,
@@ -346,5 +353,20 @@ impl<P: Plugin> Instance<P> {
                 }
             }
         }
+    }
+
+    pub unsafe extern "C" fn note_ports_count(plugin: *const clap_plugin, is_input: bool) -> u32 {
+        // todo: plugin needs a way to define this
+        1
+    }
+
+    pub unsafe extern "C" fn note_ports_get(
+        plugin: *const clap_plugin,
+        index: u32,
+        is_input: bool,
+        info: *mut clap_note_port_info,
+    ) -> bool {
+        // todo: get the info
+        // todo: plugin needs a way to define this
     }
 }
