@@ -1,15 +1,3 @@
-use std::cell::UnsafeCell;
-use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr};
-use std::iter::zip;
-use std::ptr::NonNull;
-use std::sync::Arc;
-use std::{io, mem, ptr, slice};
-use std::rc::Rc;
-use clap_sys::ext::{audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support, state::*};
-use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
-use clap_sys::ext::posix_fd_support::{clap_host_posix_fd_support, clap_plugin_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT};
-use clap_sys::ext::timer_support::{clap_host_timer_support, clap_plugin_timer_support, CLAP_EXT_TIMER_SUPPORT};
 use super::host::ClapHost;
 use crate::buffers::{BufferData, BufferType, Buffers};
 use crate::bus::{BusDir, Format};
@@ -23,6 +11,25 @@ use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 use crate::view::View;
+use clap_sys::ext::note_ports::clap_plugin_note_ports;
+use clap_sys::ext::posix_fd_support::{
+    clap_host_posix_fd_support, clap_plugin_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT,
+};
+use clap_sys::ext::timer_support::{
+    clap_host_timer_support, clap_plugin_timer_support, CLAP_EXT_TIMER_SUPPORT,
+};
+use clap_sys::ext::{
+    audio_ports::*, audio_ports_config::*, gui::*, params::*, posix_fd_support, state::*,
+};
+use clap_sys::{events::*, host::*, id::*, plugin::*, process::*, stream::*};
+use std::cell::UnsafeCell;
+use std::collections::HashMap;
+use std::ffi::{c_char, c_void, CStr};
+use std::iter::zip;
+use std::ptr::NonNull;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::{io, mem, ptr, slice};
 
 fn port_type_from_format(format: &Format) -> &'static CStr {
     match format {
@@ -87,6 +94,8 @@ pub struct Instance<P: Plugin> {
     pub param_gestures: Arc<ParamGestures>,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
+    // TODO: probably not the right place
+    pub plugin_note_ports: Option<*const clap_plugin_note_ports>,
 }
 
 unsafe impl<P: Plugin> Sync for Instance<P> {}
@@ -335,7 +344,8 @@ impl<P: Plugin> Instance<P> {
         );
         if !timer_support.is_null() {
             // todo: dereferencing seems odd - is this okay?
-            (*host_extensions).timer_support = Some(timer_support as *const clap_host_timer_support);
+            (*host_extensions).timer_support =
+                Some(timer_support as *const clap_host_timer_support);
         }
 
         let posix_fd_support = (*instance.host).get_extension.unwrap_unchecked()(
@@ -344,7 +354,8 @@ impl<P: Plugin> Instance<P> {
         );
         if !posix_fd_support.is_null() {
             // todo: dereferencing seems odd - is this okay?
-            (*host_extensions).posix_fd_support = Some(posix_fd_support as *const clap_host_posix_fd_support);
+            (*host_extensions).posix_fd_support =
+                Some(posix_fd_support as *const clap_host_posix_fd_support);
         }
 
         true
