@@ -140,6 +140,7 @@ impl<P: Plugin> Instance<P> {
                 (*posix_fd_support).unregister_fd.unwrap_unchecked()(instance.host, fd);
             }
         }
+        // todo: don't we also need to unregister the timer?
 
         main_thread_state.view = None;
     }

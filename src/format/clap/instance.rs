@@ -52,7 +52,6 @@ pub struct MainThreadState<P: Plugin> {
     pub layout_index: usize,
     pub plugin: P,
     pub view: Option<P::View>,
-    // todo: unused - remove probably
     pub view_host: Option<Rc<ClapViewHost>>,
 }
 
