@@ -11,7 +11,7 @@ use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
-use clap_sys::ext::note_ports::clap_plugin_note_ports;
+use clap_sys::ext::note_ports::{clap_note_port_info, clap_plugin_note_ports};
 use clap_sys::ext::posix_fd_support::{
     clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ,
 };
