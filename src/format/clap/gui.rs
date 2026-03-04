@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 use std::future::Future;
+use std::ops::Index;
 use std::os::raw::c_int;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -19,6 +20,9 @@ use clap_sys::ext::timer_support::clap_plugin_timer_support;
 use clap_sys::ext::{gui::*, params::*};
 use clap_sys::id::{clap_id, CLAP_INVALID_ID};
 use clap_sys::{host::*, plugin::*};
+use clap_sys::string_sizes::CLAP_NAME_SIZE;
+use log::info;
+use crate::bus::BusDir;
 
 pub struct ClapViewHost {
     host: *const clap_host,
@@ -343,8 +347,14 @@ impl<P: Plugin> Instance<P> {
     }
 
     pub unsafe extern "C" fn note_ports_count(plugin: *const clap_plugin, is_input: bool) -> u32 {
-        // todo: plugin needs a way to define this
-        1
+        let instance = &*(plugin as *const Self);
+        // todo: what should we do about inout? Is that even allowed?
+        instance.info.event_buses.iter()
+            .filter(|info| if is_input {
+                info.dir == BusDir::In
+            } else {
+                info.dir == BusDir::Out
+            }).count() as u32
     }
 
     pub unsafe extern "C" fn note_ports_get(
@@ -353,7 +363,23 @@ impl<P: Plugin> Instance<P> {
         is_input: bool,
         info: *mut clap_note_port_info,
     ) -> bool {
-        // todo: get the info
-        // todo: plugin needs a way to define this
+        let instance = &*(plugin as *const Self);
+        let buses = instance.info.event_buses.iter()
+            .filter(|info| if is_input {
+                info.dir == BusDir::In
+            } else {
+                info.dir == BusDir::Out
+            }).collect::<Vec<_>>();
+        let bus_info = buses[index as usize];
+        let bytes = bus_info.name.as_bytes();
+        let dest = &mut (*info).name;
+        *dest = [0; CLAP_NAME_SIZE];
+        // when name is too long, truncate
+        let limit = bytes.len().min(CLAP_NAME_SIZE - 1);
+        for i in 0..limit {
+            dest[i] = bytes[i] as c_char;
+        }
+
+        true
     }
 }

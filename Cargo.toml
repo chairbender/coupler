@@ -11,6 +11,7 @@ coupler-derive = { path = "coupler-derive", optional = true }
 clap-sys = "0.3.0"
 vst3 = "0.3.0"
 uuid = { version = "1.18.1", features = ["v5"] }
+log = "0.4.29"
 
 [features]
 derive = ["coupler-derive"]

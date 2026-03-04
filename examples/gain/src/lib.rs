@@ -1,8 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::{self, Formatter};
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::os::raw::c_int;
-use serde::{Deserialize, Serialize};
 
 use coupler::format::clap::*;
 use coupler::format::vst3::*;
@@ -44,10 +44,20 @@ impl Plugin for Gain {
             vendor: "Vendor".to_string(),
             url: "https://example.com".to_string(),
             email: "example@example.com".to_string(),
-            buses: vec![BusInfo {
+            audio_buses: vec![BusInfo {
                 name: "Main".to_string(),
                 dir: BusDir::InOut,
             }],
+            event_buses: vec![
+                BusInfo {
+                    name: "In1".to_string(),
+                    dir: BusDir::In,
+                },
+                BusInfo {
+                    name: "Out1".to_string(),
+                    dir: BusDir::Out,
+                },
+            ],
             layouts: vec![
                 Layout {
                     formats: vec![Format::Stereo],

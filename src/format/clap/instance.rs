@@ -94,8 +94,6 @@ pub struct Instance<P: Plugin> {
     pub param_gestures: Arc<ParamGestures>,
     pub main_thread_state: UnsafeCell<MainThreadState<P>>,
     pub process_state: UnsafeCell<ProcessState<P>>,
-    // TODO: probably not the right place
-    pub plugin_note_ports: Option<*const clap_plugin_note_ports>,
 }
 
 unsafe impl<P: Plugin> Sync for Instance<P> {}
@@ -108,7 +106,7 @@ impl<P: Plugin> Instance<P> {
     ) -> Self {
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
-        for (index, bus) in info.buses.iter().enumerate() {
+        for (index, bus) in info.audio_buses.iter().enumerate() {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
@@ -379,7 +377,7 @@ impl<P: Plugin> Instance<P> {
 
         process_state.buffer_data.clear();
         let mut total_channels = 0;
-        for (info, format) in zip(&instance.info.buses, &layout.formats) {
+        for (info, format) in zip(&instance.info.audio_buses, &layout.formats) {
             let buffer_type = match info.dir {
                 BusDir::In => BufferType::Const,
                 BusDir::Out | BusDir::InOut => BufferType::Mut,
@@ -488,7 +486,7 @@ impl<P: Plugin> Instance<P> {
 
         for (&bus_index, input) in zip(&instance.input_bus_map, inputs) {
             let data = &process_state.buffer_data[bus_index];
-            let bus_info = &instance.info.buses[bus_index];
+            let bus_info = &instance.info.audio_buses[bus_index];
 
             let channel_count = input.channel_count as usize;
             if channel_count != data.end - data.start {
@@ -625,7 +623,7 @@ impl<P: Plugin> Instance<P> {
         };
 
         if let Some(&bus_index) = bus_index {
-            let bus_info = instance.info.buses.get(bus_index);
+            let bus_info = instance.info.audio_buses.get(bus_index);
 
             let layout = &instance.info.layouts[main_thread_state.layout_index];
             let format = layout.formats.get(bus_index);

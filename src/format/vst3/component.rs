@@ -70,7 +70,7 @@ impl<P: Plugin> Component<P> {
     pub fn new(info: &Arc<PluginInfo>) -> Component<P> {
         let mut input_bus_map = Vec::new();
         let mut output_bus_map = Vec::new();
-        for (index, bus) in info.buses.iter().enumerate() {
+        for (index, bus) in info.audio_buses.iter().enumerate() {
             match bus.dir {
                 BusDir::In => input_bus_map.push(index),
                 BusDir::Out => output_bus_map.push(index),
@@ -188,7 +188,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
                 };
 
                 if let Some(&bus_index) = bus_index {
-                    let info = self.info.buses.get(bus_index);
+                    let info = self.info.audio_buses.get(bus_index);
                     let format = main_thread_state.config.layout.formats.get(bus_index);
 
                     if let (Some(info), Some(format)) = (info, format) {
@@ -268,7 +268,7 @@ impl<P: Plugin> IComponentTrait for Component<P> {
             process_state.engine = None;
         } else {
             process_state.config = main_thread_state.config.clone();
-            process_state.scratch_buffers.resize(&self.info.buses, &process_state.config);
+            process_state.scratch_buffers.resize(&self.info.audio_buses, &process_state.config);
 
             // Discard any pending plugin -> engine parameter changes, since they will already be
             // reflected in the initial state of the engine.
@@ -380,7 +380,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
 
         let mut inputs = slice_from_raw_parts_checked(inputs, input_count).iter();
         let mut outputs = slice_from_raw_parts_checked(outputs, output_count).iter();
-        for bus in &self.info.buses {
+        for bus in &self.info.audio_buses {
             let arrangement = match bus.dir {
                 BusDir::In => *inputs.next().unwrap(),
                 BusDir::Out => *outputs.next().unwrap(),
@@ -500,7 +500,7 @@ impl<P: Plugin> IAudioProcessorTrait for Component<P> {
         let data = &*data;
 
         let Ok(buffers) = process_state.scratch_buffers.get_buffers(
-            &self.info.buses,
+            &self.info.audio_buses,
             &self.input_bus_map,
             &self.output_bus_map,
             &process_state.config,
