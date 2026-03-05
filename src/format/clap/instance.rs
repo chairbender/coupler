@@ -200,26 +200,35 @@ impl<P: Plugin> Instance<P> {
         for i in 0..size {
             let event = (*in_events).get.unwrap()(in_events, i);
 
-            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID
-                && (*event).type_ == CLAP_EVENT_PARAM_VALUE
-            {
-                let event = &*(event as *const clap_event_param_value);
+            if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID {
+                if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
+                    let event = &*(event as *const clap_event_param_value);
 
-                if let Some(&index) = self.param_map.get(&event.param_id) {
-                    let value = map_param_in(&self.info.params[index], event.value);
+                    if let Some(&index) = self.param_map.get(&event.param_id) {
+                        let value = map_param_in(&self.info.params[index], event.value);
 
-                    events.push(Event {
-                        time: event.header.time as i64,
-                        data: Data::ParamChange {
-                            id: event.param_id,
-                            value,
-                        },
-                    });
+                        events.push(Event {
+                            time: event.header.time as i64,
+                            data: Data::ParamChange {
+                                id: event.param_id,
+                                value,
+                            },
+                        });
 
-                    self.plugin_params.set(index, value);
+                        self.plugin_params.set(index, value);
 
-                    params_changed = true;
+                        params_changed = true;
+                    }
+                } else if (*event).type_ == CLAP_EVENT_NOTE_ON {
+                    let event = &*(event as *const clap_event_note);
+                    // todo: pass to the plugin
+                    dbg!("note on {}", event.note_id);
+                } else if (*event).type_ == CLAP_EVENT_NOTE_OFF {
+                    // todo: pass to the plugin
+                    let event = &*(event as *const clap_event_note);
+                    dbg!("note off {}", event.note_id);
                 }
+
             }
         }
 
