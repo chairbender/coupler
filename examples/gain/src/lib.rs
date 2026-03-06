@@ -68,6 +68,10 @@ impl Plugin for Gain {
             ],
             params: GainParams::params(),
             has_view: true,
+            size: Size {
+                width: 256.0,
+                height: 256.0 
+            }
         }
     }
 
@@ -349,6 +353,7 @@ impl View for GainView {
     fn size(&self) -> Size {
         let size = self.task.with(|state, _| state.window.as_ref().unwrap().size());
 
+        dbg!("size {} {}", size.width, size.height);
         Size {
             width: size.width,
             height: size.height,

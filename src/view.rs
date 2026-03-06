@@ -66,6 +66,7 @@ pub struct Size {
 }
 
 pub trait View: Sized + 'static {
+    /// todo: remove
     fn size(&self) -> Size;
     fn param_changed(&mut self, id: ParamId, value: ParamValue);
     #[cfg(target_os = "linux")]

@@ -41,6 +41,10 @@ impl Plugin for TestPlugin {
             layouts: vec![],
             params: Vec::new(),
             has_view: false,
+            size: Size {
+                height: 0.,
+                width: 0.,
+            }
         }
     }
     fn new(_host: Host) -> Self {

@@ -171,6 +171,7 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
+        // todo: failing on x11 - view is not present by the time this is called
         if let Some(view) = &main_thread_state.view {
             let size = view.size();
 

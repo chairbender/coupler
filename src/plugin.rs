@@ -5,7 +5,7 @@ use crate::bus::{BusInfo, Layout};
 use crate::engine::{Config, Engine};
 use crate::host::Host;
 use crate::params::{ParamId, ParamInfo, ParamValue};
-use crate::view::{ParentWindow, View, ViewHost};
+use crate::view::{ParentWindow, Size, View, ViewHost};
 
 pub struct PluginInfo {
     pub name: String,
@@ -18,6 +18,7 @@ pub struct PluginInfo {
     pub layouts: Vec<Layout>,
     pub params: Vec<ParamInfo>,
     pub has_view: bool,
+    pub size: Size,
 }
 
 #[allow(clippy::derivable_impls)]
@@ -34,6 +35,10 @@ impl Default for PluginInfo {
             layouts: Vec::new(),
             params: Vec::new(),
             has_view: false,
+            size: Size { 
+                width: 0.0,
+                height: 0.0 
+            }
         }
     }
 }
