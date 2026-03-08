@@ -199,6 +199,7 @@ impl<P: Plugin> Instance<P> {
         let size = (*in_events).size.unwrap()(in_events);
         for i in 0..size {
             let event = (*in_events).get.unwrap()(in_events, i);
+            dbg!("event {}", (*event).space_id);
 
             if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID {
                 if (*event).type_ == CLAP_EVENT_PARAM_VALUE {

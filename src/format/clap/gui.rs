@@ -12,7 +12,7 @@ use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
-use clap_sys::ext::note_ports::{clap_note_port_info, clap_plugin_note_ports};
+use clap_sys::ext::note_ports::{clap_note_port_info, clap_plugin_note_ports, CLAP_NOTE_DIALECT_CLAP, CLAP_NOTE_DIALECT_MIDI};
 use clap_sys::ext::posix_fd_support::{
     clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ,
 };
@@ -349,7 +349,7 @@ impl<P: Plugin> Instance<P> {
             }).count() as u32;
         dbg!("count for {}: {}", is_input, count);
         count
-        
+
     }
 
     pub unsafe extern "C" fn note_ports_get(
@@ -375,6 +375,11 @@ impl<P: Plugin> Instance<P> {
         for i in 0..limit {
             dest[i] = bytes[i] as c_char;
         }
+        // todo: support other dialects, not sure what it means to "support"
+        (*info).supported_dialects = CLAP_NOTE_DIALECT_MIDI;
+        // todo: do we need to set the id or does clap do it for us?
+        (*info).id = 0;
+        (*info).preferred_dialect = CLAP_NOTE_DIALECT_MIDI;
 
         true
     }
