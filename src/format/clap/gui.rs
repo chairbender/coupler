@@ -168,8 +168,7 @@ impl<P: Plugin> Instance<P> {
         width: *mut u32,
         height: *mut u32,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let size = &instance.info.size;
+        let size = P::info().size;
         *width = size.width as u32;
         *height = size.height as u32;
 

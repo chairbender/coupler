@@ -66,8 +66,6 @@ pub struct Size {
 }
 
 pub trait View: Sized + 'static {
-    /// todo: remove
-    fn size(&self) -> Size;
     fn param_changed(&mut self, id: ParamId, value: ParamValue);
     #[cfg(target_os = "linux")]
     fn file_descriptor(&self) -> Option<std::os::raw::c_int>;
@@ -78,13 +76,6 @@ pub trait View: Sized + 'static {
 pub struct NoView;
 
 impl View for NoView {
-    fn size(&self) -> Size {
-        Size {
-            width: 0.0,
-            height: 0.0,
-        }
-    }
-
     fn param_changed(&mut self, _id: ParamId, _value: ParamValue) {}
 
     fn file_descriptor(&self) -> Option<c_int> {
