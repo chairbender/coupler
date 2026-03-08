@@ -60,7 +60,7 @@ impl Plugin for Gain {
             has_view: true,
             size: Size {
                 width: 256.0,
-                height: 256.0 
+                height: 256.0
             }
         }
     }
@@ -340,16 +340,6 @@ impl GainView {
 }
 
 impl View for GainView {
-    fn size(&self) -> Size {
-        let size = self.task.with(|state, _| state.window.as_ref().unwrap().size());
-
-        dbg!("size {} {}", size.width, size.height);
-        Size {
-            width: size.width,
-            height: size.height,
-        }
-    }
-
     fn param_changed(&mut self, id: ParamId, value: ParamValue) {
         self.task.with(|state, _| {
             state.params.set_param(id, value);

@@ -228,21 +228,15 @@ impl<P: Plugin> IPlugViewTrait for PlugView<P> {
             return kResultFalse;
         }
 
-        let main_thread_state = &*self.main_thread_state.get();
+        let plugin_size = P::info().size;
 
-        if let Some(view) = &main_thread_state.view {
-            let view_size = view.size();
+        let rect = &mut *size;
+        rect.left = 0;
+        rect.top = 0;
+        rect.right = plugin_size.width.round() as int32;
+        rect.bottom = plugin_size.height.round() as int32;
 
-            let rect = &mut *size;
-            rect.left = 0;
-            rect.top = 0;
-            rect.right = view_size.width.round() as int32;
-            rect.bottom = view_size.height.round() as int32;
-
-            return kResultOk;
-        }
-
-        kResultFalse
+        kResultOk
     }
 
     unsafe fn onSize(&self, _newSize: *mut ViewRect) -> tresult {
