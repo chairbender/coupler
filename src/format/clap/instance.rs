@@ -199,7 +199,7 @@ impl<P: Plugin> Instance<P> {
         let size = (*in_events).size.unwrap()(in_events);
         for i in 0..size {
             let event = (*in_events).get.unwrap()(in_events, i);
-            dbg!("event {}", (*event).space_id);
+            dbg!("event {}", (*event).type_);
 
             if (*event).space_id == CLAP_CORE_EVENT_SPACE_ID {
                 if (*event).type_ == CLAP_EVENT_PARAM_VALUE {
@@ -228,6 +228,11 @@ impl<P: Plugin> Instance<P> {
                     // todo: pass to the plugin
                     let event = &*(event as *const clap_event_note);
                     dbg!("note off {}", event.note_id);
+                } else if (*event).type_ == CLAP_EVENT_MIDI {
+                    // todo: is there any point handling both midi and
+                    //  clap notes, or do we just handle clap notes?
+                    let event = &*(event as *const clap_event_midi);
+                    dbg!("midi {}", event.data[0]);
                 }
 
             }
