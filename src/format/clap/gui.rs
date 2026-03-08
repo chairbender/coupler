@@ -158,19 +158,11 @@ impl<P: Plugin> Instance<P> {
         height: *mut u32,
     ) -> bool {
         let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let size = &instance.info.size;
+        *width = size.width as u32;
+        *height = size.height as u32;
 
-        // todo: failing on x11 - view is not present by the time this is called
-        if let Some(view) = &main_thread_state.view {
-            let size = view.size();
-
-            *width = size.width.round() as u32;
-            *height = size.height.round() as u32;
-
-            return true;
-        }
-
-        false
+        true
     }
 
     unsafe extern "C" fn gui_can_resize(_plugin: *const clap_plugin) -> bool {
