@@ -1,22 +1,31 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ffi::{c_char, CStr};
+use std::future::Future;
+use std::os::raw::c_int;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use clap_sys::ext::{gui::*, params::*};
-use clap_sys::{host::*, plugin::*};
-
-use super::instance::Instance;
+use super::instance::{Instance, MainThreadState};
 use crate::params::{ParamId, ParamValue};
 use crate::plugin::Plugin;
 use crate::sync::param_gestures::ParamGestures;
 use crate::view::{ParentWindow, RawParent, View, ViewHost, ViewHostInner};
+use clap_sys::ext::posix_fd_support::{
+    clap_plugin_posix_fd_support, clap_posix_fd_flags, CLAP_POSIX_FD_READ,
+};
+use clap_sys::ext::timer_support::clap_plugin_timer_support;
+use clap_sys::ext::{gui::*, params::*};
+use clap_sys::id::{clap_id, CLAP_INVALID_ID};
+use clap_sys::{host::*, plugin::*};
 
-struct ClapViewHost {
+pub struct ClapViewHost {
     host: *const clap_host,
     host_params: Option<*const clap_host_params>,
     param_map: Arc<HashMap<ParamId, usize>>,
     param_gestures: Arc<ParamGestures>,
+    #[cfg_attr(not(target_os = "linux"), allow(unused))]
+    timer_id: Option<clap_id>,
 }
 
 impl ViewHostInner for ClapViewHost {
@@ -73,6 +82,17 @@ impl<P: Plugin> Instance<P> {
     #[cfg(target_os = "linux")]
     const API: &'static CStr = CLAP_WINDOW_API_X11;
 
+    #[cfg(target_os = "linux")]
+    pub(crate) const TIMER_SUPPORT: clap_plugin_timer_support = clap_plugin_timer_support {
+        on_timer: Some(Self::timer_support_on_timer),
+    };
+
+    #[cfg(target_os = "linux")]
+    pub(crate) const POSIX_FD_SUPPORT: clap_plugin_posix_fd_support =
+        clap_plugin_posix_fd_support {
+            on_fd: Some(Self::posix_fd_support_on_fd),
+        };
+
     unsafe extern "C" fn gui_is_api_supported(
         _plugin: *const clap_plugin,
         api: *const c_char,
@@ -113,6 +133,18 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
+        if let Some(posix_fd_support) = (*instance.host_extensions.get()).posix_fd_support {
+            if let Some(fd) = main_thread_state.view.as_ref().unwrap().file_descriptor() {
+                (*posix_fd_support).unregister_fd.unwrap_unchecked()(instance.host, fd);
+            }
+        }
+
+        if let Some(timer_support) = (*instance.host_extensions.get()).timer_support {
+            (*timer_support).unregister_timer.unwrap_unchecked()(
+                instance.host, main_thread_state.view_host.as_ref().unwrap().timer_id.unwrap()
+            );
+        }
+
         main_thread_state.view = None;
     }
 
@@ -125,19 +157,11 @@ impl<P: Plugin> Instance<P> {
         width: *mut u32,
         height: *mut u32,
     ) -> bool {
-        let instance = &*(plugin as *const Self);
-        let main_thread_state = &mut *instance.main_thread_state.get();
+        let size = P::info().size;
+        *width = size.width as u32;
+        *height = size.height as u32;
 
-        if let Some(view) = &main_thread_state.view {
-            let size = view.size();
-
-            *width = size.width.round() as u32;
-            *height = size.height.round() as u32;
-
-            return true;
-        }
-
-        false
+        true
     }
 
     unsafe extern "C" fn gui_can_resize(_plugin: *const clap_plugin) -> bool {
@@ -189,14 +213,63 @@ impl<P: Plugin> Instance<P> {
         let instance = &*(plugin as *const Self);
         let main_thread_state = &mut *instance.main_thread_state.get();
 
-        let host = ViewHost::from_inner(Rc::new(ClapViewHost {
+        let mut timer_id: Option<clap_id> = None;
+        #[cfg(target_os = "linux")]
+        {
+            let host_extensions = instance.host_extensions.get();
+            if (*host_extensions).timer_support.is_none()
+            {
+                dbg!("missing timer support");
+                return false;
+            }
+            let timer_support = (*host_extensions).timer_support.unwrap();
+            const TIMER_PERIOD_MS: u32 = 16;
+            let mut maybe_timer_id = CLAP_INVALID_ID;
+            if !(*timer_support).register_timer.unwrap_unchecked()(
+                instance.host,
+                TIMER_PERIOD_MS,
+                &mut maybe_timer_id,
+            ) {
+                dbg!("Failed to register timer");
+                return false;
+            }
+            timer_id = Some(maybe_timer_id);
+        }
+
+        let view_host = Rc::new(ClapViewHost {
             host: instance.host,
             host_params: main_thread_state.host_params,
             param_map: Arc::clone(&instance.param_map),
             param_gestures: Arc::clone(&instance.param_gestures),
-        }));
+            timer_id,
+        });
+        main_thread_state.view_host = Some(view_host);
+        let view_host = ViewHost::from_inner(main_thread_state.view_host.as_ref().unwrap().clone());
         let parent = ParentWindow::from_raw(raw_parent);
-        let view = main_thread_state.plugin.view(host, &parent);
+        let view = main_thread_state.plugin.view(view_host, &parent);
+
+        #[cfg(target_os = "linux")]
+        {
+            let host_extensions = instance.host_extensions.get();
+            if (*host_extensions).posix_fd_support.is_none()
+            {
+                dbg!("missing fd support");
+                return false;
+            }
+            let posix_fd_support = (*host_extensions).posix_fd_support.unwrap();
+
+            if let Some(fd) = view.file_descriptor() {
+                if !(*posix_fd_support).register_fd.unwrap_unchecked()(
+                    instance.host,
+                    fd,
+                    CLAP_POSIX_FD_READ,
+                ) {
+                    dbg!("Failed to register fd");
+                    return false;
+                }
+            }
+        }
+
         main_thread_state.view = Some(view);
 
         true
@@ -217,5 +290,40 @@ impl<P: Plugin> Instance<P> {
 
     unsafe extern "C" fn gui_hide(_plugin: *const clap_plugin) -> bool {
         false
+    }
+
+    #[cfg(target_os = "linux")]
+    unsafe extern "C" fn timer_support_on_timer(plugin: *const clap_plugin, timer_id: clap_id) {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+
+        main_thread_state.view_host.as_ref().unwrap().timer_id;
+
+        if let Some(view_host) = &mut main_thread_state.view_host {
+            if let Some(id) = view_host.timer_id {
+                if id == timer_id {
+                    if let Some(view) = &mut main_thread_state.view {
+                        view.poll();
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub unsafe extern "C" fn posix_fd_support_on_fd(
+        plugin: *const clap_plugin,
+        fd: i32,
+        _flags: clap_posix_fd_flags,
+    ) {
+        let instance = &*(plugin as *const Self);
+        let main_thread_state = unsafe { &mut *instance.main_thread_state.get() };
+        if let Some(view) = &mut main_thread_state.view {
+            if let Some(fd) = view.file_descriptor() {
+                if fd == fd {
+                    view.poll();
+                }
+            }
+        }
     }
 }
