@@ -341,12 +341,15 @@ impl<P: Plugin> Instance<P> {
     pub unsafe extern "C" fn note_ports_count(plugin: *const clap_plugin, is_input: bool) -> u32 {
         let instance = &*(plugin as *const Self);
         // todo: what should we do about inout? Is that even allowed?
-        instance.info.event_buses.iter()
+        let count = instance.info.event_buses.iter()
             .filter(|info| if is_input {
                 info.dir == BusDir::In
             } else {
                 info.dir == BusDir::Out
-            }).count() as u32
+            }).count() as u32;
+        dbg!("count for {}: {}", is_input, count);
+        count
+        
     }
 
     pub unsafe extern "C" fn note_ports_get(
@@ -363,6 +366,7 @@ impl<P: Plugin> Instance<P> {
                 info.dir == BusDir::Out
             }).collect::<Vec<_>>();
         let bus_info = buses[index as usize];
+        dbg!("bus info {}", bus_info);
         let bytes = bus_info.name.as_bytes();
         let dest = &mut (*info).name;
         *dest = [0; CLAP_NAME_SIZE];

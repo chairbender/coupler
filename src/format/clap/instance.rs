@@ -11,7 +11,7 @@ use crate::sync::param_gestures::{GestureStates, GestureUpdate, ParamGestures};
 use crate::sync::params::ParamValues;
 use crate::util::{copy_cstring, slice_from_raw_parts_checked, DisplayParam};
 use crate::view::View;
-use clap_sys::ext::note_ports::clap_plugin_note_ports;
+use clap_sys::ext::note_ports::{clap_plugin_note_ports, CLAP_EXT_NOTE_PORTS};
 use clap_sys::ext::posix_fd_support::{
     clap_host_posix_fd_support, clap_plugin_posix_fd_support, CLAP_EXT_POSIX_FD_SUPPORT,
 };
@@ -575,6 +575,10 @@ impl<P: Plugin> Instance<P> {
             if instance.info.has_view {
                 return &Self::GUI as *const _ as *const c_void;
             }
+        }
+
+        if id == CLAP_EXT_NOTE_PORTS {
+           return &Self::NOTE_PORTS as *const _ as *const c_void;
         }
 
         // todo: adding this required making below constants public - is there
